@@ -1,12 +1,13 @@
 package com.marketplace.app.domain.repository
 
 import com.marketplace.app.data.local.dao.VendedorDao
+import com.marketplace.app.data.local.entities.VendedorEntity
 import com.marketplace.app.data.remote.api.VendedorApiService
 import com.marketplace.app.domain.model.Resource
 import com.marketplace.app.domain.model.Vendedor
-import com.marketplace.app.domain.repository.VendedorRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 class VendedorRepositoryImpl @Inject constructor(
@@ -18,29 +19,48 @@ class VendedorRepositoryImpl @Inject constructor(
         emit(Resource.Loading)
 
         try {
-            // Primero obtener de la base de datos local
-            vendedorDao.getAllVendedores().collect { entities ->
-                val vendedores = entities.map { it.toDomain() }
-                emit(Resource.Success(vendedores))
-            }
-
-            // Luego intentar sincronizar con el servidor
+            // Intentar obtener del servidor primero
             try {
                 val response = vendedorApiService.getAllVendedores()
+
                 if (response.isSuccessful && response.body()?.success == true) {
-                    val vendedoresDTO = response.body()!!.data!!
-                    val entities = vendedoresDTO.map {
-                        com.marketplace.app.data.local.entities.VendedorEntity.fromDomain(it.toDomain())
+                    val vendedoresDTO = response.body()!!.data ?: emptyList()
+
+                    // Guardar en base de datos local
+                    val entities = vendedoresDTO.map { dto ->
+                        VendedorEntity.fromDomain(dto.toDomain())
                     }
                     vendedorDao.deleteAll()
                     vendedorDao.insertAll(entities)
+
+                    // Emitir los datos del servidor
+                    val vendedores = vendedoresDTO.map { it.toDomain() }
+                    emit(Resource.Success(vendedores))
+                } else {
+                    // Si falla el servidor, intentar cargar desde local
+                    emit(Resource.Error("Error del servidor: ${response.message()}"))
+                    loadFromLocal()
                 }
             } catch (e: Exception) {
-                // Ignorar errores de sincronización, usar datos locales
+                // Si hay error de red, cargar desde local
+                emit(Resource.Error("Error de conexión: ${e.message}"))
+                loadFromLocal()
             }
-
         } catch (e: Exception) {
-            emit(Resource.Error("Error cargando vendedores: ${e.message}"))
+            emit(Resource.Error("Error general: ${e.message}"))
+        }
+    }
+
+    fun loadFromLocal(): Flow<Resource<List<Vendedor>>> = flow {
+        try {
+            vendedorDao.getAllVendedores().collect { entities ->
+                val vendedores = entities.map { it.toDomain() }
+                if (vendedores.isNotEmpty()) {
+                    emit(Resource.Success(vendedores)) // ✅ ahora sí puedes usar emit
+                }
+            }
+        } catch (e: Exception) {
+            emit(Resource.Error("Error cargando datos locales: ${e.message}"))
         }
     }
 
@@ -67,18 +87,18 @@ class VendedorRepositoryImpl @Inject constructor(
             if (response.isSuccessful && response.body()?.success == true) {
                 val createdVendedor = response.body()!!.data!!.toDomain()
                 // Guardar en base de datos local
-                val entity = com.marketplace.app.data.local.entities.VendedorEntity.fromDomain(createdVendedor)
+                val entity = VendedorEntity.fromDomain(createdVendedor)
                 vendedorDao.insertVendedor(entity)
                 Resource.Success(createdVendedor)
             } else {
-                Resource.Error("Error creando vendedor en el servidor")
+                Resource.Error("Error creando vendedor en el servidor: ${response.message()}")
             }
         } catch (e: Exception) {
             // Fallback: guardar localmente
             try {
-                val entity = com.marketplace.app.data.local.entities.VendedorEntity.fromDomain(vendedor)
+                val entity = VendedorEntity.fromDomain(vendedor)
                 val id = vendedorDao.insertVendedor(entity)
-                val localVendedor = vendedor.copy(id = id.toLong())
+                val localVendedor = vendedor.copy(id = id)
                 Resource.Success(localVendedor)
             } catch (dbException: Exception) {
                 Resource.Error("Error creando vendedor: ${dbException.message}")
@@ -95,11 +115,11 @@ class VendedorRepositoryImpl @Inject constructor(
 
             if (response.isSuccessful && response.body()?.success == true) {
                 val updatedVendedor = response.body()!!.data!!.toDomain()
-                val entity = com.marketplace.app.data.local.entities.VendedorEntity.fromDomain(updatedVendedor)
+                val entity = VendedorEntity.fromDomain(updatedVendedor)
                 vendedorDao.updateVendedor(entity)
                 Resource.Success(updatedVendedor)
             } else {
-                Resource.Error("Error actualizando vendedor en el servidor")
+                Resource.Error("Error actualizando vendedor: ${response.message()}")
             }
         } catch (e: Exception) {
             Resource.Error("Error actualizando vendedor: ${e.message}")
@@ -114,7 +134,7 @@ class VendedorRepositoryImpl @Inject constructor(
                 vendedorDao.deleteVendedorById(id.toInt())
                 Resource.Success(Unit)
             } else {
-                Resource.Error("Error eliminando vendedor en el servidor")
+                Resource.Error("Error eliminando vendedor: ${response.message()}")
             }
         } catch (e: Exception) {
             Resource.Error("Error eliminando vendedor: ${e.message}")

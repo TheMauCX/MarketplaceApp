@@ -12,7 +12,7 @@ import javax.inject.Singleton
 @Singleton
 class RetrofitClient @Inject constructor() {
 
-    private val BASE_URL = "http://localhost:8080/"
+    private val BASE_URL = "http://10.0.2.2:8080/"
 
     private val gson = GsonBuilder()
         .setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
