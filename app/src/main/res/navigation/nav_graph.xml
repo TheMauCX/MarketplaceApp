@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/vendedorListFragment">
+
+    <fragment
+        android:id="@+id/vendedorListFragment"
+        android:name="com.marketplace.app.presentation.ui.vendedores.VendedorListFragment"
+        android:label="Vendedores"
+        tools:layout="@layout/fragment_vendedor_list" />
+
+    <fragment
+        android:id="@+id/productoListFragment"
+        android:name="com.marketplace.app.presentation.ui.productos.ProductoListFragment"
+        android:label="Productos"
+        tools:layout="@layout/fragment_producto_list" />
+
+</navigation>
